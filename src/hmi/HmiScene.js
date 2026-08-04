@@ -1,14 +1,12 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { CAMERA_VIEWS } from './config.js';
+import { AssetRepository } from './core/AssetRepository.js';
+import { WebGpuRenderPipeline } from './core/WebGpuRenderPipeline.js';
 import { EnvironmentRig } from './EnvironmentRig.js';
 import { VehicleRig } from './VehicleRig.js';
 
-const PIXEL_RATIO_LIMIT = 1.7;
+const PIXEL_RATIO_LIMIT = 2;
 
 function cameraPreset(id) {
   return CAMERA_VIEWS.find((view) => view.id === id) ?? CAMERA_VIEWS[0];
@@ -19,41 +17,75 @@ export class HmiScene {
     this.container = container;
     this.callbacks = callbacks;
     this.timer = new THREE.Timer();
+    this.timer.connect(document);
     this.pointer = new THREE.Vector2(2, 2);
     this.raycaster = new THREE.Raycaster();
     this.cameraGoal = null;
     this.disposed = false;
     this.view = 'hero';
     this.sceneMode = 'day';
+    this.progress = 0;
 
-    this.init();
+    this.init().catch((error) => {
+      console.error('Unable to initialise the HMI renderer.', error);
+      this.callbacks.onError?.(error);
+    });
   }
 
   async init() {
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xb8c9d5);
-    this.scene.fog = new THREE.FogExp2(0xb8c9d5, 0.008);
+    this.createScene();
+    this.createRenderer();
+    await this.renderer.init();
+    if (this.disposed) return;
+    this.renderer.domElement.dataset.rendererBackend = this.renderer.backend.isWebGPUBackend
+      ? 'webgpu'
+      : 'webgl2-fallback';
 
-    const aspect = this.container.clientWidth / Math.max(this.container.clientHeight, 1);
+    this.createControls();
+    this.assets = new AssetRepository((progress) => this.reportProgress(progress));
+    this.environment = new EnvironmentRig(this.scene, this.assets);
+    this.vehicle = new VehicleRig(this.scene, this.assets);
+
+    await Promise.all([this.environment.load(), this.vehicle.load()]);
+    if (this.disposed) return;
+
+    this.pipeline = new WebGpuRenderPipeline(this.renderer, this.scene, this.camera);
+    this.pipeline.setMode(this.sceneMode);
+    this.bindEvents();
+    this.renderer.setAnimationLoop(() => this.render());
+    this.reportProgress(1);
+    this.callbacks.onReady?.({
+      backend: this.renderer.backend.isWebGPUBackend ? 'webgpu' : 'webgl2-fallback',
+      revision: THREE.REVISION,
+    });
+  }
+
+  createScene() {
+    this.scene = new THREE.Scene();
     const initial = cameraPreset('hero');
+    const aspect = this.container.clientWidth / Math.max(this.container.clientHeight, 1);
     this.camera = new THREE.PerspectiveCamera(initial.fov, aspect, 0.08, 140);
     this.camera.position.fromArray(initial.position);
+  }
 
-    this.renderer = new THREE.WebGLRenderer({
+  createRenderer() {
+    this.renderer = new THREE.WebGPURenderer({
       alpha: false,
-      antialias: true,
+      antialias: false,
       powerPreference: 'high-performance',
-      preserveDrawingBuffer: false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_LIMIT));
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.92;
+    this.renderer.toneMappingExposure = 0.76;
     this.container.appendChild(this.renderer.domElement);
+  }
 
+  createControls() {
+    const initial = cameraPreset('hero');
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
@@ -64,29 +96,11 @@ export class HmiScene {
     this.controls.maxPolarAngle = Math.PI * 0.49;
     this.controls.target.fromArray(initial.target);
     this.controls.addEventListener('start', () => { this.cameraGoal = null; });
-
-    this.environment = new EnvironmentRig(this.scene);
-    this.vehicle = new VehicleRig(this.scene, (progress) => this.callbacks.onProgress?.(progress));
-    await this.vehicle.load();
-    if (this.disposed) return;
-
-    this.buildPostProcessing();
-    this.bindEvents();
-    this.renderer.setAnimationLoop(() => this.render());
-    this.callbacks.onReady?.({ webgl: true });
   }
 
-  buildPostProcessing() {
-    const size = new THREE.Vector2(this.container.clientWidth, this.container.clientHeight);
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_LIMIT));
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloomPass = new UnrealBloomPass(size, 0.2, 0.7, 0.88);
-    this.bloomPass.threshold = 0.83;
-    this.bloomPass.strength = 0.22;
-    this.bloomPass.radius = 0.64;
-    this.composer.addPass(this.bloomPass);
-    this.composer.addPass(new OutputPass());
+  reportProgress(value) {
+    this.progress = Math.max(this.progress, THREE.MathUtils.clamp(value, 0, 1));
+    this.callbacks.onProgress?.(this.progress);
   }
 
   bindEvents() {
@@ -102,17 +116,16 @@ export class HmiScene {
     this.handlePointerDown = () => {
       if (!this.vehicle.hotspotsVisible) return;
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hit = this.raycaster.intersectObjects(this.vehicle.hotspots, false)[0];
-      if (!hit) return;
-      const open = !this.vehicle.accessOpen;
+      const action = this.vehicle.hitTest(this.raycaster);
+      if (!action) return;
+      const open = !this.vehicle.access.open;
       this.vehicle.setAccessOpen(open);
-      this.callbacks.onAccessChange?.(open, hit.object.userData.action);
+      this.callbacks.onAccessChange?.(open, action);
     };
 
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
-
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
   }
@@ -124,7 +137,6 @@ export class HmiScene {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
-    this.composer?.setSize(width, height);
     if (this.controls) this.setView(this.view, true);
   }
 
@@ -161,12 +173,12 @@ export class HmiScene {
     this.sceneMode = mode;
     this.environment?.setMode(mode);
     this.vehicle?.setSceneMode(mode);
+    this.pipeline?.setMode(mode);
     if (previousMode === 'stage' && mode !== 'stage') this.vehicle?.resetRotation();
-    if (this.bloomPass) {
-      this.bloomPass.strength = mode === 'neon' ? 0.42 : mode === 'stage' ? 0.2 : 0.16;
-      this.bloomPass.threshold = mode === 'neon' ? 0.7 : 0.86;
+    if (this.renderer) {
+      const exposure = { day: 0.76, neon: 0.72, stage: 0.76 };
+      this.renderer.toneMappingExposure = exposure[mode] ?? exposure.day;
     }
-    if (this.renderer) this.renderer.toneMappingExposure = mode === 'day' ? 0.92 : mode === 'stage' ? 1.04 : 1.12;
   }
 
   setTimeOfDay(value) {
@@ -189,14 +201,10 @@ export class HmiScene {
     const position = new THREE.Vector3().fromArray(preset.position);
     const target = new THREE.Vector3().fromArray(preset.target);
     if (this.camera.aspect < 0.78 && !['interior', 'wheel'].includes(preset.id)) {
-      const portraitScale = 1 + (0.78 - this.camera.aspect) * 2.35;
+      const portraitScale = 1 + (0.78 - this.camera.aspect) * 3.4;
       position.sub(target).multiplyScalar(portraitScale).add(target);
     }
-    const goal = {
-      fov: preset.fov,
-      position,
-      target,
-    };
+    const goal = { fov: preset.fov, position, target };
     if (immediate) {
       this.camera.position.copy(goal.position);
       this.controls.target.copy(goal.target);
@@ -231,12 +239,11 @@ export class HmiScene {
       return;
     }
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hovering = this.raycaster.intersectObjects(this.vehicle.hotspots, false).length > 0;
-    this.renderer.domElement.style.cursor = hovering ? 'pointer' : 'grab';
+    this.renderer.domElement.style.cursor = this.vehicle.hitTest(this.raycaster) ? 'pointer' : 'grab';
   }
 
   render() {
-    if (this.disposed || !this.composer) return;
+    if (this.disposed || !this.pipeline) return;
     this.timer.update();
     const delta = Math.min(this.timer.getDelta(), 0.05);
     const elapsed = this.timer.getElapsed();
@@ -245,24 +252,26 @@ export class HmiScene {
     this.controls.update();
     this.environment.update(delta, elapsed);
     this.vehicle.update(delta, elapsed);
-    this.composer.render(delta);
+    this.pipeline.render();
   }
 
   dispose() {
     this.disposed = true;
     this.resizeObserver?.disconnect();
+    this.timer.disconnect();
     this.renderer?.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer?.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
     this.renderer?.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer?.setAnimationLoop(null);
     this.controls?.dispose();
-    this.environment?.dispose();
+    this.vehicle?.dispose();
+    this.pipeline?.dispose();
     this.scene?.traverse((object) => {
       object.geometry?.dispose();
-      if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose());
-      else object.material?.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.filter(Boolean).forEach((material) => material.dispose());
     });
-    this.composer?.dispose();
+    this.assets?.dispose();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
   }
