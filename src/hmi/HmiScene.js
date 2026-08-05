@@ -91,7 +91,11 @@ export class HmiScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
-    this.controls.enablePan = false;
+    this.controls.enablePan = true;
+    this.controls.screenSpacePanning = true;
+    this.controls.panSpeed = 0.72;
+    this.controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
     this.controls.minDistance = 2.4;
     this.controls.maxDistance = 18;
     this.controls.minPolarAngle = Math.PI * 0.12;
@@ -115,14 +119,14 @@ export class HmiScene {
       this.pointer.set(2, 2);
       this.renderer.domElement.style.cursor = 'grab';
     };
-    this.handlePointerDown = () => {
+    this.handlePointerDown = (event) => {
+      if (event.button !== 0) return;
       if (!this.vehicle.hotspotsVisible) return;
       this.raycaster.setFromCamera(this.pointer, this.camera);
       const action = this.vehicle.hitTest(this.raycaster);
       if (!action) return;
-      const open = !this.vehicle.access.open;
-      this.vehicle.setAccessOpen(open);
-      this.callbacks.onAccessChange?.(open, action);
+      const result = this.vehicle.toggleAccess(action);
+      if (result) this.callbacks.onAccessChange?.(result);
     };
 
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
@@ -156,6 +160,10 @@ export class HmiScene {
 
   setAccessOpen(open) {
     this.vehicle?.setAccessOpen(open);
+  }
+
+  setAccessState(state) {
+    this.vehicle?.setAccessState(state);
   }
 
   setHotspots(visible) {

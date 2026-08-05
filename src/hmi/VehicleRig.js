@@ -26,7 +26,7 @@ export class VehicleRig {
     this.materials.configure(this.asset);
     this.displayGroup.add(this.asset);
 
-    this.access = new VehicleAccessController(this.displayGroup, DEFAULT_PAINT);
+    this.access = new VehicleAccessController(this.asset);
     this.lighting = new VehicleLighting(this.displayGroup);
     this.hotspotController = new VehicleHotspots(this.displayGroup);
     return this;
@@ -49,7 +49,6 @@ export class VehicleRig {
 
   setPaint(color) {
     this.materials.setPaint(color);
-    this.access?.setPaint(color);
   }
 
   setWheelStyle(style) {
@@ -69,6 +68,14 @@ export class VehicleRig {
 
   setAccessOpen(open) {
     this.access?.setOpen(open);
+  }
+
+  setAccessState(state) {
+    this.access?.setState(state);
+  }
+
+  toggleAccess(part) {
+    return this.access?.toggle(part) ?? null;
   }
 
   setHotspots(visible) {

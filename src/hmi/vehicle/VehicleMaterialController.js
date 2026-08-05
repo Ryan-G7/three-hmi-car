@@ -40,6 +40,8 @@ function setTextureQuality(material) {
 export class VehicleMaterialController {
   constructor(defaultPaint) {
     this.paintColor = new THREE.Color(defaultPaint);
+    this.lightsEnabled = false;
+    this.sceneMode = 'day';
     this.paintMaterials = new Set();
     this.rimMaterials = new Set();
     this.lightMaterials = new Set();
@@ -180,17 +182,25 @@ export class VehicleMaterialController {
   }
 
   setLights(enabled) {
+    this.lightsEnabled = enabled;
+    this.applyLightState();
+  }
+
+  applyLightState() {
+    const intensity = { day: 3.2, neon: 4.6, stage: 3.9 }[this.sceneMode] ?? 3.2;
     this.lightMaterials.forEach((material) => {
-      material.emissive?.setHex(enabled ? 0xdff7ff : 0x05080a);
-      material.emissiveIntensity = enabled ? 10 : 0.08;
+      material.emissive?.setHex(this.lightsEnabled ? 0xffffff : 0x060708);
+      material.emissiveIntensity = this.lightsEnabled ? intensity : 0.06;
       material.needsUpdate = true;
     });
   }
 
   setSceneMode(mode) {
+    this.sceneMode = mode;
     const paintIntensity = { day: 2.05, neon: 2.5, stage: 2.28 }[mode] ?? 2.05;
     const glassIntensity = { day: 2.1, neon: 2.55, stage: 2.35 }[mode] ?? 2.1;
     this.paintMaterials.forEach((material) => { material.envMapIntensity = paintIntensity; });
     this.glassMaterials.forEach((material) => { material.envMapIntensity = glassIntensity; });
+    this.applyLightState();
   }
 }

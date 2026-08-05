@@ -53,7 +53,7 @@ export class EnvironmentRig {
     this.buildDayArchitecture();
     this.buildNeonDetails();
     this.buildStageDetails();
-    this.buildSnow();
+    this.buildWeatherEffects();
   }
 
   async load() {
@@ -156,7 +156,12 @@ export class EnvironmentRig {
     this.dayReflection.rotation.x = -Math.PI / 2;
     this.dayReflection.position.set(0, -0.006, -1.2);
     this.dayGroup.add(this.dayReflection);
-    this.dayGroup.add(this.createShadowCatcher(new THREE.PlaneGeometry(19, 9.5), [0, 0.002, -1.2], 0.24));
+    this.dayShadowCatcher = this.createShadowCatcher(
+      new THREE.PlaneGeometry(19, 9.5),
+      [0, 0.002, -1.2],
+      0.24,
+    );
+    this.dayGroup.add(this.dayShadowCatcher);
 
     const neonGround = surface(
       new THREE.PlaneGeometry(50, 50),
@@ -376,28 +381,262 @@ export class EnvironmentRig {
     });
   }
 
-  buildSnow() {
-    const count = 420;
-    const positions = new Float32Array(count * 3);
-    for (let index = 0; index < count; index += 1) {
-      positions[index * 3] = -14 + seededRandom(index + 180) * 28;
-      positions[index * 3 + 1] = seededRandom(index + 280) * 11;
-      positions[index * 3 + 2] = -12 + seededRandom(index + 380) * 24;
+  buildWeatherEffects() {
+    this.buildRain();
+    this.buildSnow();
+  }
+
+  buildRain() {
+    const dropCount = 720;
+    const positions = new Float32Array(dropCount * 6);
+    const heads = new Float32Array(dropCount * 3);
+    const speeds = new Float32Array(dropCount);
+    const lengths = new Float32Array(dropCount);
+
+    for (let index = 0; index < dropCount; index += 1) {
+      const headOffset = index * 3;
+      const lineOffset = index * 6;
+      const x = -14 + seededRandom(index + 1100) * 28;
+      const y = 0.3 + seededRandom(index + 1200) * 12;
+      const z = -12 + seededRandom(index + 1300) * 24;
+      const speed = 8.5 + seededRandom(index + 1400) * 8;
+      const length = 0.22 + seededRandom(index + 1500) * 0.46;
+      heads.set([x, y, z], headOffset);
+      speeds[index] = speed;
+      lengths[index] = length;
+      positions.set([x, y, z, x + 0.09, y + length, z - 0.025], lineOffset);
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.snow = new THREE.Points(
-      geometry,
-      new THREE.PointsMaterial({
-        color: 0xffffff,
+
+    const streakGeometry = new THREE.BufferGeometry();
+    const streakAttribute = new THREE.BufferAttribute(positions, 3);
+    streakAttribute.setUsage(THREE.DynamicDrawUsage);
+    streakGeometry.setAttribute('position', streakAttribute);
+    const streakMaterial = new THREE.LineBasicMaterial({
+      color: 0xa9d9eb,
+      depthWrite: false,
+      opacity: 0.5,
+      transparent: true,
+    });
+    this.rainStreaks = new THREE.LineSegments(streakGeometry, streakMaterial);
+    this.rainStreaks.frustumCulled = false;
+
+    const splashCount = 280;
+    const splashPositions = new Float32Array(splashCount * 3);
+    const splashAges = new Float32Array(splashCount);
+    const splashLives = new Float32Array(splashCount);
+    this.rainSplashes = new THREE.InstancedMesh(
+      new THREE.RingGeometry(0.024, 0.038, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xc7edff,
         depthWrite: false,
-        opacity: 0.72,
-        size: 0.045,
+        opacity: 0.46,
+        side: THREE.DoubleSide,
         transparent: true,
       }),
+      splashCount,
     );
-    this.snow.visible = false;
-    this.dayGroup.add(this.snow);
+    this.rainSplashes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.rainSplashes.frustumCulled = false;
+    this.rainSplashDummy = new THREE.Object3D();
+
+    this.rainRoot = new THREE.Group();
+    this.rainRoot.name = 'Rain field';
+    this.rainRoot.visible = false;
+    this.rainRoot.add(this.rainStreaks, this.rainSplashes);
+    this.dayGroup.add(this.rainRoot);
+    this.rainState = {
+      heads,
+      lengths,
+      positions,
+      speeds,
+      splashAges,
+      splashLives,
+      splashPositions,
+    };
+
+    for (let index = 0; index < splashCount; index += 1) {
+      this.resetSplash(index, -seededRandom(index + 1600) * 0.5);
+      this.updateSplashInstance(index);
+    }
+    this.rainSplashes.instanceMatrix.needsUpdate = true;
+  }
+
+  resetSplash(index, age = 0) {
+    const state = this.rainState;
+    const offset = index * 3;
+    state.splashAges[index] = age;
+    state.splashLives[index] = 0.36 + seededRandom(index * 7 + 1700 + age * 10) * 0.34;
+    state.splashPositions[offset] = -8 + seededRandom(index * 11 + 1800 + age * 10) * 16;
+    state.splashPositions[offset + 1] = 0.026;
+    state.splashPositions[offset + 2] = -7 + seededRandom(index * 13 + 1900 + age * 10) * 14;
+  }
+
+  updateSplashInstance(index) {
+    const state = this.rainState;
+    const offset = index * 3;
+    const progress = THREE.MathUtils.clamp(
+      state.splashAges[index] / Math.max(state.splashLives[index], 0.001),
+      0,
+      1,
+    );
+    const pulse = Math.sin(progress * Math.PI);
+    const scale = state.splashAges[index] < 0
+      ? 0
+      : (0.35 + progress * 1.65) * Math.pow(pulse, 0.35);
+    this.rainSplashDummy.position.fromArray(state.splashPositions, offset);
+    this.rainSplashDummy.scale.setScalar(scale);
+    this.rainSplashDummy.rotation.set(-Math.PI / 2, 0, index * 0.91);
+    this.rainSplashDummy.updateMatrix();
+    this.rainSplashes.setMatrixAt(index, this.rainSplashDummy.matrix);
+  }
+
+  buildSnow() {
+    const layerProfiles = [
+      { color: 0xdceaf0, count: 480, drift: 0.14, opacity: 0.46, size: 0.01, speed: 0.55 },
+      { color: 0xf0f7fa, count: 320, drift: 0.24, opacity: 0.68, size: 0.019, speed: 0.9 },
+      { color: 0xffffff, count: 150, drift: 0.38, opacity: 0.86, size: 0.031, speed: 1.28 },
+    ];
+
+    this.snowLayers = layerProfiles.map((profile, layerIndex) => {
+      const positions = new Float32Array(profile.count * 3);
+      const fallSpeeds = new Float32Array(profile.count);
+      const phases = new Float32Array(profile.count);
+      const scales = new Float32Array(profile.count);
+      for (let index = 0; index < profile.count; index += 1) {
+        const offset = index * 3;
+        const seed = layerIndex * 2000 + index;
+        positions[offset] = -10 + seededRandom(seed + 2300) * 20;
+        positions[offset + 1] = 0.12 + seededRandom(seed + 2400) * 9;
+        positions[offset + 2] = -9 + seededRandom(seed + 2500) * 14.5;
+        fallSpeeds[index] = profile.speed * (0.7 + seededRandom(seed + 2600) * 0.65);
+        phases[index] = seededRandom(seed + 2700) * Math.PI * 2;
+        scales[index] = 0.65 + seededRandom(seed + 2750) * 0.7;
+      }
+
+      const flakes = new THREE.InstancedMesh(
+        new THREE.SphereGeometry(profile.size, 6, 4),
+        new THREE.MeshBasicMaterial({
+          color: profile.color,
+          depthWrite: false,
+          opacity: profile.opacity,
+          transparent: true,
+        }),
+        profile.count,
+      );
+      const dummy = new THREE.Object3D();
+      for (let index = 0; index < profile.count; index += 1) {
+        dummy.position.fromArray(positions, index * 3);
+        dummy.rotation.set(phases[index], phases[index] * 0.7, phases[index] * 0.4);
+        dummy.scale.setScalar(scales[index]);
+        dummy.updateMatrix();
+        flakes.setMatrixAt(index, dummy.matrix);
+      }
+      flakes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      flakes.instanceMatrix.needsUpdate = true;
+      flakes.name = `Snow layer ${layerIndex + 1}`;
+      flakes.frustumCulled = false;
+      flakes.visible = false;
+      flakes.userData.weather = {
+        ...profile,
+        dummy,
+        fallSpeeds,
+        phases,
+        positions,
+        scales,
+      };
+      this.dayGroup.add(flakes);
+      return flakes;
+    });
+  }
+
+  updateRain(delta) {
+    const state = this.rainState;
+    const wind = -2.05;
+    for (let index = 0; index < state.speeds.length; index += 1) {
+      const headOffset = index * 3;
+      const lineOffset = index * 6;
+      let x = state.heads[headOffset] + wind * delta;
+      let y = state.heads[headOffset + 1] - state.speeds[index] * delta;
+      let z = state.heads[headOffset + 2] + 0.28 * delta;
+      if (y < 0.02) {
+        x = -14 + seededRandom(index + y * 100 + 2800) * 28;
+        y = 8 + seededRandom(index + y * 100 + 2900) * 5;
+        z = -12 + seededRandom(index + y * 100 + 3000) * 24;
+      }
+      if (x < -15) x = 15;
+      if (z > 13) z = -13;
+      state.heads.set([x, y, z], headOffset);
+      const tailTime = state.lengths[index] / state.speeds[index];
+      state.positions.set([
+        x,
+        y,
+        z,
+        x - wind * tailTime,
+        y + state.lengths[index],
+        z - 0.025,
+      ], lineOffset);
+    }
+    this.rainStreaks.geometry.attributes.position.needsUpdate = true;
+
+    for (let index = 0; index < state.splashAges.length; index += 1) {
+      const wasDormant = state.splashAges[index] < 0;
+      state.splashAges[index] += delta;
+      if (state.splashAges[index] < 0) continue;
+      if (wasDormant) {
+        this.resetSplash(index, 0);
+        this.updateSplashInstance(index);
+        continue;
+      }
+      if (state.splashAges[index] > state.splashLives[index]) {
+        this.resetSplash(index, -seededRandom(index + state.splashAges[index] * 3100) * 0.18);
+        this.updateSplashInstance(index);
+        continue;
+      }
+      this.updateSplashInstance(index);
+    }
+    this.rainSplashes.instanceMatrix.needsUpdate = true;
+  }
+
+  updateSnow(delta, elapsed) {
+    this.snowLayers.forEach((layer, layerIndex) => {
+      if (!layer.visible) return;
+      const {
+        count,
+        drift,
+        dummy,
+        fallSpeeds,
+        phases,
+        positions,
+        scales,
+      } = layer.userData.weather;
+      for (let index = 0; index < count; index += 1) {
+        const offset = index * 3;
+        const phase = phases[index];
+        positions[offset] += Math.sin(elapsed * 0.72 + phase) * drift * delta;
+        positions[offset + 1] -= fallSpeeds[index] * delta;
+        positions[offset + 2] += Math.cos(elapsed * 0.48 + phase) * drift * 0.32 * delta;
+        if (positions[offset + 1] < 0.04) {
+          positions[offset] = -10 + seededRandom(index + elapsed * 100 + layerIndex * 3400) * 20;
+          positions[offset + 1] = 8.2 + seededRandom(index + elapsed * 120 + layerIndex * 3500) * 1.8;
+          positions[offset + 2] = -9 + seededRandom(index + elapsed * 140 + layerIndex * 3600) * 14.5;
+        }
+        if (positions[offset] > 11) positions[offset] = -11;
+        else if (positions[offset] < -11) positions[offset] = 11;
+        if (positions[offset + 2] > 6) positions[offset + 2] = -9;
+        else if (positions[offset + 2] < -9) positions[offset + 2] = 6;
+        const flutter = scales[index] * (0.82 + Math.sin(elapsed * 1.6 + phase) * 0.18);
+        dummy.position.fromArray(positions, offset);
+        dummy.rotation.set(
+          elapsed * 0.42 + phase,
+          elapsed * 0.31 + phase * 0.7,
+          elapsed * 0.23 + phase * 0.4,
+        );
+        dummy.scale.setScalar(flutter);
+        dummy.updateMatrix();
+        layer.setMatrixAt(index, dummy.matrix);
+      }
+      layer.instanceMatrix.needsUpdate = true;
+    });
   }
 
   setMode(mode) {
@@ -439,7 +678,11 @@ export class EnvironmentRig {
 
   setWeather(weather) {
     this.weather = WEATHER_PROFILES[weather] ? weather : 'sunny';
-    if (this.snow) this.snow.visible = this.weather === 'snow' && this.mode === 'day';
+    const showWeather = this.mode === 'day';
+    if (this.rainRoot) this.rainRoot.visible = showWeather && this.weather === 'rain';
+    this.snowLayers?.forEach((layer) => {
+      layer.visible = showWeather && this.weather === 'snow';
+    });
     if (this.mode === 'day') this.applyDaylight();
   }
 
@@ -469,7 +712,19 @@ export class EnvironmentRig {
     this.dayAreaLights[1].intensity = profile.softbox * 0.64;
     this.dayAreaLights[2].intensity = profile.softbox * 0.42;
     this.dayGroundMaterial.color.setHex(profile.groundColor);
+    this.dayGroundMaterial.clearcoat = profile.groundClearcoat ?? 0.24;
+    this.dayGroundMaterial.clearcoatRoughness = profile.groundClearcoatRoughness ?? 0.42;
+    this.dayGroundMaterial.envMapIntensity = profile.groundEnvironment ?? 1;
     this.dayGroundMaterial.roughness = profile.groundRoughness;
+    this.dayReflection.visible = this.weather !== 'rain';
+    this.dayShadowCatcher.visible = this.weather !== 'rain';
+    if (this.dayReflection?.material?.isMeshPhysicalMaterial) {
+      this.dayReflection.material.color.setHex(profile.reflectionColor ?? 0x526169);
+      this.dayReflection.material.clearcoat = this.weather === 'rain' ? 1 : 0.86;
+      this.dayReflection.material.clearcoatRoughness = this.weather === 'rain' ? 0.045 : 0.19;
+      this.dayReflection.material.envMapIntensity = profile.reflectionEnvironment ?? 1.68;
+      this.dayReflection.material.roughness = profile.reflectionRoughness ?? 0.24;
+    }
   }
 
   setSunAngle(value) {
@@ -490,15 +745,16 @@ export class EnvironmentRig {
       this.stageRingMaterial.opacity = 0.78 + Math.sin(elapsed * 1.45) * 0.06;
     }
 
-    if (this.snow?.visible) {
-      const positions = this.snow.geometry.attributes.position.array;
-      for (let index = 1; index < positions.length; index += 3) {
-        positions[index] -= delta * 1.05;
-        if (positions[index] < 0.08) positions[index] = 11;
-      }
-      this.snow.geometry.attributes.position.needsUpdate = true;
-    }
+    if (this.rainRoot?.visible) this.updateRain(delta);
+    if (this.snowLayers?.some((layer) => layer.visible)) this.updateSnow(delta, elapsed);
   }
 
-  dispose() {}
+  dispose() {
+    [this.rainStreaks, this.rainSplashes, ...(this.snowLayers ?? [])].forEach((object) => {
+      object?.geometry.dispose();
+      object?.material.dispose();
+      object?.removeFromParent();
+    });
+    this.rainRoot?.removeFromParent();
+  }
 }

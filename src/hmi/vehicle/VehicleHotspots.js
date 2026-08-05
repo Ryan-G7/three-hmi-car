@@ -30,10 +30,9 @@ function createHotspotTexture() {
 }
 
 const HOTSPOTS = [
-  { id: 'left-door', position: [-1.22, 0.84, -0.35] },
-  { id: 'right-door', position: [1.22, 0.84, -0.35] },
-  { id: 'trunk', position: [0, 0.76, -2.42] },
-  { id: 'hood', position: [0, 0.76, 2.25] },
+  { id: 'left-door', position: [-1.12, 0.78, -0.28] },
+  { id: 'right-door', position: [1.12, 0.78, -0.28] },
+  { id: 'trunk', position: [0, 0.86, -2.25] },
 ];
 
 export class VehicleHotspots {

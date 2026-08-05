@@ -48,7 +48,7 @@ input:focus-visible {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 560px;
+  min-height: 320px;
   overflow: hidden;
   isolation: isolate;
   background: #05070a;
@@ -103,8 +103,7 @@ input:focus-visible {
 .system-right,
 .scene-label,
 .adjustment-card,
-.weather-card,
-.login-power {
+.weather-card {
   display: flex;
   align-items: center;
 }
@@ -118,6 +117,31 @@ input:focus-visible {
 .system-right { gap: 16px; }
 .system-right svg { color: rgba(241, 247, 249, 0.84); }
 .system-right time { margin-left: 2px; font-size: 15px; }
+.brand-lockup { font-weight: 500; }
+
+.language-switch {
+  height: 25px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(236, 244, 248, 0.16);
+  border-radius: 3px;
+  background: rgba(4, 9, 14, 0.34);
+}
+
+.language-switch > svg { margin: 0 3px; }
+.language-switch button {
+  min-width: 34px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(239, 246, 249, 0.58);
+  font-size: 9px;
+}
+
+.language-switch button.active { background: rgba(77, 183, 255, 0.2); color: #fff; }
 
 .time-readout {
   position: absolute;
@@ -147,9 +171,7 @@ input:focus-visible {
 }
 
 .control-panel::before,
-.control-panel::after,
-.login-panel::before,
-.login-panel::after {
+.control-panel::after {
   position: absolute;
   width: 22px;
   height: 22px;
@@ -157,16 +179,14 @@ input:focus-visible {
   pointer-events: none;
 }
 
-.control-panel::before,
-.login-panel::before {
+.control-panel::before {
   top: -1px;
   left: -1px;
   border-top: 1px solid var(--blue);
   border-left: 1px solid var(--blue);
 }
 
-.control-panel::after,
-.login-panel::after {
+.control-panel::after {
   right: -1px;
   bottom: -1px;
   border-right: 1px solid var(--blue);
@@ -252,6 +272,60 @@ input:focus-visible {
 .scene-options button i { width: 26px; height: 26px; border-radius: 50%; background: var(--scene-color); box-shadow: 0 0 14px var(--scene-color); }
 .scene-options button.active { border-color: var(--scene-color); color: var(--ink); }
 
+.access-options { display: grid; gap: 1px; padding-top: 14px; }
+.access-switch-row {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 7px;
+  border-bottom: 1px solid rgba(236, 244, 248, 0.12);
+  cursor: pointer;
+}
+
+.access-switch-row:last-child { border-bottom: 0; }
+.access-ident { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.access-ident > b {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(77, 183, 255, 0.48);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.access-ident > span { min-width: 0; display: grid; gap: 3px; }
+.access-ident strong { overflow-wrap: anywhere; font-size: 11px; font-weight: 500; }
+.access-ident small { color: var(--faint); font-size: 9px; }
+.switch-control { position: relative; flex: 0 0 36px; height: 20px; }
+.switch-control input { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch-control i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(236, 244, 248, 0.24);
+  border-radius: 10px;
+  background: rgba(236, 244, 248, 0.08);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.switch-control i b {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(238, 245, 248, 0.72);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.switch-control input:checked + i { border-color: var(--blue); background: rgba(77, 183, 255, 0.25); }
+.switch-control input:checked + i b { background: #dff4ff; transform: translateX(16px); }
+.switch-control input:focus-visible + i { outline: 1px solid var(--blue); outline-offset: 3px; }
+
 .environment-ribbon {
   position: absolute;
   z-index: 11;
@@ -290,6 +364,7 @@ input:focus-visible {
 .weather-card.active { border-color: rgba(236, 244, 248, 0.44); background: rgba(12, 19, 25, 0.84); }
 .weather-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(236, 244, 248, 0.22); border-radius: 50%; color: #e4eef2; }
 .weather-card:first-child .weather-icon { color: #f7c45c; }
+.weather-card:nth-child(3) .weather-icon { color: #74cfff; }
 .weather-copy { display: grid; gap: 3px; }
 .weather-copy strong { font-size: 19px; font-weight: 400; line-height: 1; }
 .weather-copy small { color: var(--faint); font-size: 9px; white-space: nowrap; }
@@ -376,8 +451,7 @@ input[type="range"] { width: 100%; height: 2px; accent-color: #dbe8ed; cursor: p
   transform: translate(-50%, -50%);
 }
 
-.loading-screen,
-.login-screen {
+.loading-screen {
   position: absolute;
   z-index: 25;
   inset: 0;
@@ -392,58 +466,17 @@ input[type="range"] { width: 100%; height: 2px; accent-color: #dbe8ed; cursor: p
 .loading-track i { display: block; height: 100%; background: var(--blue); transition: width 0.25s ease; }
 .loading-screen small { color: rgba(231, 241, 246, 0.42); font-size: 10px; }
 
-.login-screen { background: rgba(3, 8, 16, 0.67); }
-.login-panel {
-  position: relative;
-  width: 320px;
-  min-height: 334px;
-  display: grid;
-  align-content: start;
-  gap: 17px;
-  padding: 39px 28px 28px;
-  border: 1px solid rgba(77, 183, 255, 0.88);
-  background: rgba(3, 9, 16, 0.57);
-  box-shadow: 0 0 28px rgba(16, 101, 163, 0.12);
-}
-
-.login-panel::before,
-.login-panel::after { width: 30px; height: 30px; }
-.login-panel header { margin-bottom: 6px; color: #4db7ff; font-size: 26px; font-weight: 500; }
-.login-panel label { display: flex; align-items: center; gap: 9px; padding: 0 0 8px; border-bottom: 1px solid rgba(237, 246, 249, 0.38); color: #4db7ff; }
-.login-panel input { width: 100%; border: 0; outline: 0; background: transparent; color: #f1f8fb; font-size: 14px; }
-.login-panel input::placeholder { color: rgba(238, 246, 249, 0.32); }
-.register-link { justify-self: end; margin-top: -3px; padding: 0; background: transparent; color: #b9a9ff; font-size: 12px; }
-.login-submit { height: 40px; margin-top: 3px; border-radius: 3px; background: #159de4; color: #fff; font-size: 16px; box-shadow: 0 0 15px rgba(21, 157, 228, 0.26); }
-.login-submit:hover { background: #31b5f5; }
-.login-power { position: absolute; right: 21px; bottom: 22px; padding: 6px; background: transparent; color: rgba(245, 249, 250, 0.88); }
-.login-power:hover { color: var(--blue); }
-
-.modal-backdrop { position: absolute; z-index: 40; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.32); backdrop-filter: blur(5px); }
-.exit-dialog { display: grid; gap: 25px; justify-items: center; }
-.exit-dialog strong { min-width: 192px; padding: 8px 24px; border-radius: 20px; background: rgba(255, 255, 255, 0.95); color: #12171b; font-size: 14px; font-weight: 600; text-align: center; }
-.exit-dialog > div { display: flex; gap: 210px; }
-.exit-dialog button { min-width: 63px; height: 31px; border-radius: 2px; background: rgba(255, 255, 255, 0.95); color: #12171b; font-size: 13px; font-weight: 600; }
-.exit-dialog button:hover { background: var(--blue); color: #fff; }
-
 .loading-enter-active,
 .loading-leave-active,
-.login-enter-active,
-.login-leave-active,
 .panel-enter-active,
 .panel-leave-active,
 .toast-enter-active,
-.toast-leave-active,
-.modal-enter-active,
-.modal-leave-active { transition: opacity 0.35s ease, transform 0.35s ease; }
+.toast-leave-active { transition: opacity 0.35s ease, transform 0.35s ease; }
 .loading-leave-to,
-.login-leave-to,
 .panel-leave-to,
-.toast-leave-to,
-.modal-leave-to { opacity: 0; }
-.login-enter-from,
+.toast-leave-to { opacity: 0; }
 .panel-enter-from { opacity: 0; transform: translateY(-8px); }
 .toast-enter-from { opacity: 0; transform: translate(-50%, -42%); }
-.modal-enter-from { opacity: 0; }
 
 @media (max-width: 1000px) {
   .system-left { gap: 10px; }
@@ -463,6 +496,7 @@ input[type="range"] { width: 100%; height: 2px; accent-color: #dbe8ed; cursor: p
   .system-right svg:nth-child(1),
   .system-right svg:nth-child(2) { display: none; }
   .system-right time { font-size: 12px; }
+  .language-switch > svg { display: none; }
   .time-readout { top: 66px; left: 16px; }
   .time-readout time { font-size: 25px; }
   .time-readout span { font-size: 11px; }
@@ -480,9 +514,11 @@ input[type="range"] { width: 100%; height: 2px; accent-color: #dbe8ed; cursor: p
   .command-dock button svg { width: 21px; height: 21px; }
   .command-dock button::after { right: 15px; left: 15px; }
   .scene-label { display: none; }
-  .login-panel { width: min(320px, calc(100vw - 42px)); min-height: 312px; padding: 34px 24px 24px; }
-  .login-power { right: 10px; bottom: 10px; }
-  .exit-dialog > div { gap: 70px; }
+}
+
+@media (max-width: 480px) {
+  .system-left .range { display: none; }
+  .language-switch button { min-width: 30px; padding: 0 4px; }
 }
 
 @media (max-height: 650px) and (min-width: 721px) {
