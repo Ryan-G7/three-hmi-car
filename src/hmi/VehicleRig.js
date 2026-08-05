@@ -62,6 +62,7 @@ export class VehicleRig {
   }
 
   setSceneMode(mode) {
+    this.materials.setSceneMode(mode);
     this.lighting?.setMode(mode);
     this.group.position.y = mode === 'stage' ? 0.47 : 0;
   }
@@ -92,6 +93,7 @@ export class VehicleRig {
 
   update(delta, elapsed) {
     this.access?.update(delta);
+    this.lighting?.update(elapsed);
     this.hotspotController?.update(elapsed);
     if (this.autoRotate) this.group.rotation.y += delta * 0.24;
   }

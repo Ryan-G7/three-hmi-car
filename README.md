@@ -27,4 +27,4 @@ The primary rendering path uses `WebGPURenderer`, HDR image-based lighting, nati
 
 The active `mercedes-benz_amg.glb` asset is "Mercedes-Benz AMG GT Black Series" by Tiaan Pretorius and is licensed under CC BY-NC 4.0. Its source URL and attribution are embedded in the GLB metadata. The fallback `nova-gt.glb` and AO map originate from the Three.js `ferrari.glb` example asset. Review all upstream terms and replace the model with a production-licensed asset before commercial use.
 
-The `cayley_lookout_2k.hdr` environment is from [Poly Haven](https://polyhaven.com/) and is licensed under CC0. The complete commercial building is from Kenney's City Kit (Commercial) 2.1 and is also licensed under CC0; its license is included beside the model.
+The `cayley_lookout_2k.hdr` environment is from [Poly Haven](https://polyhaven.com/) and is licensed under CC0. The plaza architecture, reflective surfaces, light-track environment, and black-gold stage are generated procedurally by the application.

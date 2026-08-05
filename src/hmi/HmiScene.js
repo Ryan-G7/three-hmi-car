@@ -79,8 +79,10 @@ export class HmiScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.76;
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.transmissionResolutionScale = 0.72;
+    this.renderer.setClearColor(0x020407, 1);
     this.container.appendChild(this.renderer.domElement);
   }
 
@@ -176,7 +178,7 @@ export class HmiScene {
     this.pipeline?.setMode(mode);
     if (previousMode === 'stage' && mode !== 'stage') this.vehicle?.resetRotation();
     if (this.renderer) {
-      const exposure = { day: 0.76, neon: 0.72, stage: 0.76 };
+      const exposure = { day: 1.05, neon: 0.93, stage: 1.08 };
       this.renderer.toneMappingExposure = exposure[mode] ?? exposure.day;
     }
   }
@@ -265,6 +267,7 @@ export class HmiScene {
     this.renderer?.setAnimationLoop(null);
     this.controls?.dispose();
     this.vehicle?.dispose();
+    this.environment?.dispose();
     this.pipeline?.dispose();
     this.scene?.traverse((object) => {
       object.geometry?.dispose();
