@@ -2,13 +2,21 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CAMERA_VIEWS } from './config.js';
 import { AssetRepository } from './core/AssetRepository.js';
+import { PathTracingLayer } from './core/PathTracingLayer.js';
 import { WebGpuRenderPipeline } from './core/WebGpuRenderPipeline.js';
 import { EnvironmentRig } from './EnvironmentRig.js';
 import { VehicleRig } from './VehicleRig.js';
 
 const PIXEL_RATIO_LIMIT = 2;
+const CHASE_VIEW = {
+  fov: 34,
+  id: 'chase',
+  position: [0, 1.52, -11.4],
+  target: [0, 0.7, -0.12],
+};
 
 function cameraPreset(id) {
+  if (id === CHASE_VIEW.id) return CHASE_VIEW;
   return CAMERA_VIEWS.find((view) => view.id === id) ?? CAMERA_VIEWS[0];
 }
 
@@ -143,27 +151,33 @@ export class HmiScene {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.pathTracing?.resize(width, height);
     if (this.controls) this.setView(this.view, true);
   }
 
   setPaint(color) {
     this.vehicle?.setPaint(color);
+    this.pathTracing?.invalidate('materials');
   }
 
   setWheelStyle(style) {
     this.vehicle?.setWheelStyle(style);
+    this.pathTracing?.invalidate('materials');
   }
 
   setLights(enabled) {
     this.vehicle?.setLights(enabled);
+    this.pathTracing?.invalidate('materials');
   }
 
   setAccessOpen(open) {
     this.vehicle?.setAccessOpen(open);
+    this.pathTracing?.invalidate('scene', 1100);
   }
 
   setAccessState(state) {
     this.vehicle?.setAccessState(state);
+    this.pathTracing?.invalidate('scene', 1100);
   }
 
   setHotspots(visible) {
@@ -172,10 +186,12 @@ export class HmiScene {
 
   setAutoRotate(enabled) {
     this.vehicle?.setAutoRotate(enabled);
+    this.pathTracing?.invalidate('scene');
   }
 
   setWeather(weather) {
     this.environment?.setWeather(weather);
+    this.pathTracing?.invalidate('scene');
   }
 
   setSceneMode(mode) {
@@ -184,25 +200,45 @@ export class HmiScene {
     this.environment?.setMode(mode);
     this.vehicle?.setSceneMode(mode);
     this.pipeline?.setMode(mode);
+    this.pathTracing?.invalidate('scene');
     if (previousMode === 'stage' && mode !== 'stage') this.vehicle?.resetRotation();
     if (this.renderer) {
       const exposure = { day: 1.05, neon: 0.93, stage: 1.08 };
       this.renderer.toneMappingExposure = exposure[mode] ?? exposure.day;
+      this.pathTracing?.setExposure(this.renderer.toneMappingExposure);
     }
   }
 
   setTimeOfDay(value) {
     this.environment?.setTimeOfDay(value);
+    this.pathTracing?.invalidate('materials');
   }
 
   setSunAngle(value) {
     this.environment?.setSunAngle(value);
+    this.pathTracing?.invalidate('materials');
   }
 
   setPerspective(value) {
     const preset = cameraPreset(this.view);
     this.camera.fov = THREE.MathUtils.lerp(preset.fov - 7, preset.fov + 9, value);
     this.camera.updateProjectionMatrix();
+  }
+
+  async setPathTracing(enabled) {
+    if (!this.pathTracing) {
+      this.pathTracing = new PathTracingLayer(this.container, this.scene, this.camera, {
+        exposure: this.renderer.toneMappingExposure,
+        onStatus: (status, error) => this.callbacks.onPathTracingStatus?.(status, error),
+      });
+    }
+
+    try {
+      return await this.pathTracing.setEnabled(enabled);
+    } catch (error) {
+      console.error('Unable to enable path tracing.', error);
+      return false;
+    }
   }
 
   setView(view, immediate = false) {
@@ -260,9 +296,12 @@ export class HmiScene {
     this.updateCamera(delta);
     this.updatePointer();
     this.controls.update();
-    this.environment.update(delta, elapsed);
-    this.vehicle.update(delta, elapsed);
-    this.pipeline.render();
+    if (!this.pathTracing?.freezeScene) {
+      this.environment.update(delta, elapsed);
+      this.vehicle.update(delta, elapsed);
+    }
+    this.pathTracing?.update();
+    if (!this.pathTracing?.isPresenting) this.pipeline.render();
   }
 
   dispose() {
@@ -276,6 +315,7 @@ export class HmiScene {
     this.controls?.dispose();
     this.vehicle?.dispose();
     this.environment?.dispose();
+    this.pathTracing?.dispose();
     this.pipeline?.dispose();
     this.scene?.traverse((object) => {
       object.geometry?.dispose();

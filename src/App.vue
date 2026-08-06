@@ -28,6 +28,7 @@ import {
   Move3D,
   PanelsTopLeft,
   RotateCw,
+  ScanLine,
   Settings,
   Signal,
   Snowflake,
@@ -54,6 +55,8 @@ const sceneReady = ref(false);
 const loadingProgress = ref(0);
 const activePanel = ref(null);
 const muted = ref(false);
+const pathTracing = ref(false);
+const pathTracingBusy = ref(false);
 const toast = ref('');
 const currentTime = ref(new Date());
 const config = reactive({
@@ -87,6 +90,7 @@ const tools = [
   { id: 'scene', titleKey: 'tool.scene', icon: markRaw(PanelsTopLeft) },
   { id: 'interior', titleKey: 'tool.interior', icon: markRaw(Armchair) },
   { id: 'neon', titleKey: 'tool.neon', icon: markRaw(Clapperboard) },
+  { id: 'pathTracing', titleKey: 'tool.pathTracing', icon: markRaw(ScanLine) },
   { id: 'wheels', titleKey: 'tool.wheels', icon: markRaw(Disc3) },
   { id: 'volume', titleKey: 'tool.volume', icon: markRaw(Volume2) },
   { id: 'fullscreen', titleKey: 'tool.fullscreen', icon: markRaw(Maximize) },
@@ -153,15 +157,22 @@ function setLocale(nextLocale) {
   window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
 }
 
-function selectView(view) {
+function selectView(view, immediate = false) {
   config.view = view;
-  hmi?.setView(view);
+  hmi?.setView(view, immediate);
 }
 
 function selectScene(scene) {
+  const previousScene = config.scene;
   config.scene = scene;
   config.autoRotate = scene === 'stage';
   if (scene !== 'day') config.lights = true;
+  if (scene === 'neon') {
+    config.view = 'rear';
+    hmi?.setView('chase', true);
+  } else if (previousScene === 'neon' && config.view === 'rear') {
+    selectView('rear', true);
+  }
   if (scene === 'stage') config.paint = PAINTS[4].value;
   if (scene === 'stage') selectView('hero');
 }
@@ -185,11 +196,12 @@ function isToolActive(id) {
   if (id === 'rotate') return config.autoRotate;
   if (id === 'turntable') return config.scene === 'stage';
   if (id === 'neon') return config.scene === 'neon';
+  if (id === 'pathTracing') return pathTracing.value;
   if (id === 'volume') return muted.value;
   return activePanel.value === id || (id === 'wheels' && activePanel.value === 'vehicle');
 }
 
-function performTool(id) {
+async function performTool(id) {
   if (id === 'lights') config.lights = !config.lights;
   if (id === 'key') showToast(t('toast.unlocked'));
   if (id === 'vehicle' || id === 'wheels') {
@@ -203,6 +215,21 @@ function performTool(id) {
   if (id === 'scene') activePanel.value = activePanel.value === 'scene' ? null : 'scene';
   if (id === 'interior') selectView(config.view === 'interior' ? 'hero' : 'interior');
   if (id === 'neon') selectScene(config.scene === 'neon' ? 'day' : 'neon');
+  if (id === 'pathTracing' && !pathTracingBusy.value) {
+    const next = !pathTracing.value;
+    pathTracing.value = next;
+    pathTracingBusy.value = true;
+    if (next) showToast(t('toast.pathTracingBuilding'));
+    const enabled = await hmi?.setPathTracing(next);
+    pathTracingBusy.value = false;
+    if (next && enabled) showToast(t('toast.pathTracingOn'));
+    else if (next) {
+      pathTracing.value = false;
+      showToast(t('toast.pathTracingUnavailable'));
+    } else {
+      showToast(t('toast.pathTracingOff'));
+    }
+  }
   if (id === 'volume') muted.value = !muted.value;
   if (id === 'fullscreen') toggleFullscreen();
   if (id === 'reset') {
@@ -426,6 +453,7 @@ onBeforeUnmount(() => {
           :title="t(tool.titleKey)"
           :aria-label="t(tool.titleKey)"
           :class="{ active: isToolActive(tool.id) }"
+          :disabled="tool.id === 'pathTracing' && pathTracingBusy"
           @click="performTool(tool.id)"
         >
           <VolumeX v-if="tool.id === 'volume' && muted" :size="24" />

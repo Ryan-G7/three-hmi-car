@@ -144,7 +144,20 @@ function findMesh(root, pattern) {
   return match;
 }
 
-function classifyDoorPanel(bounds) {
+function classifyDoorMirror(bounds) {
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const isMirrorPart = Math.abs(center.x) > 0.82
+    && bounds.min.y > 0.69
+    && bounds.max.y < 1
+    && bounds.min.z > -0.34
+    && bounds.max.z < 0.16
+    && size.z < 0.42;
+  if (!isMirrorPart) return null;
+  return center.x < 0 ? 'leftDoor' : 'rightDoor';
+}
+
+function classifyBodyPanel(bounds) {
   const center = bounds.getCenter(new THREE.Vector3());
   const size = bounds.getSize(new THREE.Vector3());
   const side = center.x < 0 ? 'leftDoor' : 'rightDoor';
@@ -157,7 +170,48 @@ function classifyDoorPanel(bounds) {
     && bounds.min.y > 0.62
     && bounds.min.z > -0.8
     && bounds.max.z < -0.44;
-  return isMainPanel || isHandle ? side : null;
+  return isMainPanel || isHandle || classifyDoorMirror(bounds) ? side : null;
+}
+
+function classifyDoorTrim(bounds) {
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const isDoorPart = Math.abs(center.x) > 0.72
+    && size.x < 0.58
+    && bounds.min.z > -1.02
+    && bounds.max.z < 0.58
+    && bounds.min.y > 0.06
+    && bounds.max.y > 0.42
+    && (size.z > 0.34 || Math.abs(center.x) > 0.88);
+  if (!isDoorPart) return null;
+  return center.x < 0 ? 'leftDoor' : 'rightDoor';
+}
+
+function classifyTrunkTrim(bounds) {
+  const center = bounds.getCenter(new THREE.Vector3());
+  return center.z < -1.34
+    && center.y > 0.62
+    && bounds.min.z < -1.62
+    && bounds.max.z < -0.92
+    && bounds.min.y > 0.38
+    ? 'trunk'
+    : null;
+}
+
+function classifyAccessTrim(bounds) {
+  return classifyDoorTrim(bounds) ?? classifyTrunkTrim(bounds);
+}
+
+function classifyDoorInterior(bounds) {
+  const center = bounds.getCenter(new THREE.Vector3());
+  const isOuterRight = bounds.min.x > 0.68;
+  const isOuterLeft = bounds.max.x < -0.68;
+  const isDoorEnvelope = bounds.min.z > -0.94
+    && bounds.max.z < 0.2
+    && bounds.min.y > 0.05
+    && bounds.max.y < 1.08;
+  if ((!isOuterLeft && !isOuterRight) || !isDoorEnvelope) return null;
+  return center.x < 0 ? 'leftDoor' : 'rightDoor';
 }
 
 function classifyDoorWindow(point) {
@@ -166,6 +220,14 @@ function classifyDoorWindow(point) {
     || point.z < -0.95
     || point.z > 0.14) return null;
   return point.x < 0 ? 'leftDoor' : 'rightDoor';
+}
+
+function classifyTrunkPanel(point) {
+  return point.z < -1.02
+    && point.y > 0.61
+    && Math.abs(point.x) < 0.79
+    ? 'trunk'
+    : null;
 }
 
 function classifyRearWindow(point) {
@@ -182,6 +244,10 @@ function classifyTrunkCarbon(bounds) {
     && bounds.min.z < -1.65
     ? 'trunk'
     : null;
+}
+
+function classifyAccessCarbon(bounds) {
+  return classifyDoorMirror(bounds) ?? classifyTrunkCarbon(bounds);
 }
 
 export class VehicleAccessController {
@@ -233,9 +299,17 @@ export class VehicleAccessController {
     const body = findMesh(this.asset, /^M_CarPaint_Max_M_CarPaint_Max_0$/);
     const windows = findMesh(this.asset, /^M_Glass_WindowFront_Max002_Window_0$/);
     const carbon = findMesh(this.asset, /^M__Carbon_Gloss_Carbon_0$/);
+    const opaque = findMesh(this.asset, /^M_Opaque_PaintSolidBlack_Max_M_Swatch_0$/);
+    const badges = findMesh(this.asset, /^M_Badge_Max_Badge_0$/);
+    const interior = findMesh(this.asset, /^M_Interior_Max002_Interior_0$/);
+    const mirrors = [
+      findMesh(this.asset, /^M_GlassOpaque_Mirror_Max_Mirror_0$/),
+      findMesh(this.asset, /^M_GlassOpaque_Mirror_Max004_Mirror_0$/),
+    ].filter(Boolean);
 
     if (body) {
-      this.addSplitGeometry(body, splitConnectedComponents(body, classifyDoorPanel));
+      this.addSplitGeometry(body, splitConnectedComponents(body, classifyBodyPanel, true));
+      this.addSplitGeometry(body, splitTriangles(body, classifyTrunkPanel));
     }
 
     if (windows) {
@@ -246,9 +320,26 @@ export class VehicleAccessController {
     if (carbon) {
       this.addSplitGeometry(
         carbon,
-        splitConnectedComponents(carbon, classifyTrunkCarbon, true),
+        splitConnectedComponents(carbon, classifyAccessCarbon, true),
       );
     }
+
+    if (opaque) {
+      this.addSplitGeometry(opaque, splitConnectedComponents(opaque, classifyAccessTrim, true));
+      this.addSplitGeometry(opaque, splitTriangles(opaque, classifyDoorWindow));
+    }
+
+    if (badges) {
+      this.addSplitGeometry(badges, splitConnectedComponents(badges, classifyTrunkTrim, true));
+    }
+
+    if (interior) {
+      this.addSplitGeometry(interior, splitConnectedComponents(interior, classifyDoorInterior, true));
+    }
+
+    mirrors.forEach((mirror) => {
+      this.addSplitGeometry(mirror, splitConnectedComponents(mirror, classifyDoorTrim));
+    });
   }
 
   setState(nextState) {

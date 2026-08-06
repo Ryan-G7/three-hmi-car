@@ -29,6 +29,72 @@ function emissiveMaterial(hex, intensity = 6) {
   });
 }
 
+function createNeonSkyTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const context = canvas.getContext('2d');
+  const background = context.createLinearGradient(0, 0, 0, canvas.height);
+  background.addColorStop(0, '#02050d');
+  background.addColorStop(0.58, '#07101d');
+  background.addColorStop(1, '#111425');
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  context.fillStyle = '#d7e9ff';
+  for (let index = 0; index < 620; index += 1) {
+    const x = seededRandom(index + 5100) * canvas.width;
+    const y = seededRandom(index + 5300) * canvas.height * 0.72;
+    const radius = 0.07 + seededRandom(index + 5500) * 0.18;
+    context.globalAlpha = 0.08 + seededRandom(index + 5700) * 0.26;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = 'screen';
+  for (let band = 0; band < 4; band += 1) {
+    const bandY = 58 + band * 38;
+    const gradient = context.createLinearGradient(0, bandY, 0, bandY + 100);
+    gradient.addColorStop(0, 'rgba(20, 255, 149, 0)');
+    gradient.addColorStop(0.46, `rgba(24, 235, ${132 + band * 10}, ${0.18 + band * 0.02})`);
+    gradient.addColorStop(1, 'rgba(25, 126, 152, 0)');
+    context.strokeStyle = gradient;
+    context.lineWidth = 30 + band * 5;
+    context.shadowBlur = 48;
+    context.shadowColor = band % 2 ? '#18bb91' : '#21e595';
+    context.beginPath();
+    context.moveTo(-80, bandY + seededRandom(band + 5900) * 24);
+    context.bezierCurveTo(
+      180,
+      bandY - 72 + band * 7,
+      380,
+      bandY + 88 - band * 4,
+      590,
+      bandY + 8,
+    );
+    context.bezierCurveTo(
+      760,
+      bandY - 76 + band * 4,
+      920,
+      bandY + 62,
+      1100,
+      bandY - 12,
+    );
+    context.stroke();
+  }
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = 'source-over';
+  context.shadowBlur = 0;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 export class EnvironmentRig {
   constructor(scene, assets) {
     this.scene = scene;
@@ -37,6 +103,7 @@ export class EnvironmentRig {
     this.weather = 'sunny';
     this.timeOfDay = 0.78;
     this.neonStreaks = [];
+    this.neonRoadMarkers = [];
 
     this.root = new THREE.Group();
     this.dayGroup = new THREE.Group();
@@ -116,9 +183,10 @@ export class EnvironmentRig {
       this.createAreaLight(this.dayGroup, 0xf5f7f4, 3.6, 4.5, 1.2, [-4.8, 2.4, -3.6]),
     ];
     this.neonAreaLights = [
-      this.createAreaLight(this.neonGroup, 0xf124c1, 13, 5.5, 1.4, [-4.5, 2.5, -1.4]),
-      this.createAreaLight(this.neonGroup, 0x4aaee8, 11, 5, 1.2, [4.8, 2.1, 2.8]),
-      this.createAreaLight(this.neonGroup, 0x7457ff, 8, 4.5, 1, [1.2, 4.8, -4.5]),
+      this.createAreaLight(this.neonGroup, 0xf124c1, 6.8, 4.8, 1.05, [-4.5, 2.5, -1.4]),
+      this.createAreaLight(this.neonGroup, 0x4aaee8, 5.6, 4.6, 0.95, [4.8, 2.1, 2.8]),
+      this.createAreaLight(this.neonGroup, 0x7457ff, 4.4, 4.2, 0.85, [1.2, 4.8, -4.5]),
+      this.createAreaLight(this.neonGroup, 0xffb45e, 3.2, 3.2, 0.65, [-2.2, 1.35, 4.5]),
     ];
     this.stageAreaLights = [
       this.createAreaLight(this.stageGroup, 0xf1f5ff, 12, 6.8, 1.9, [-3.5, 6.2, 4.8]),
@@ -166,11 +234,13 @@ export class EnvironmentRig {
     const neonGround = surface(
       new THREE.PlaneGeometry(50, 50),
       new THREE.MeshPhysicalMaterial({
-        clearcoat: 0.7,
-        clearcoatRoughness: 0.18,
-        color: 0x05070b,
-        metalness: 0.48,
-        roughness: 0.24,
+        clearcoat: 0.16,
+        clearcoatRoughness: 0.48,
+        color: 0x010207,
+        envMapIntensity: 0.12,
+        metalness: 0.03,
+        roughness: 0.86,
+        specularIntensity: 0.08,
       }),
     );
     neonGround.rotation.x = -Math.PI / 2;
@@ -289,36 +359,144 @@ export class EnvironmentRig {
   }
 
   buildNeonDetails() {
-    const colors = [0xf229bd, 0x5b78ff, 0x2bd0d8, 0xf2c84b];
-    for (let index = 0; index < 38; index += 1) {
-      const hex = colors[index % colors.length];
-      const length = 3.5 + seededRandom(index) * 7.5;
-      const streak = surface(
-        new THREE.BoxGeometry(0.035 + seededRandom(index + 5) * 0.035, 0.022, length),
-        emissiveMaterial(hex, 8 + seededRandom(index + 8) * 5),
-      );
-      streak.position.set(
-        -16 + seededRandom(index + 20) * 32,
-        -0.002,
-        -20 + seededRandom(index + 40) * 40,
-      );
-      streak.userData.speed = 5 + seededRandom(index + 60) * 9;
-      this.neonGroup.add(streak);
-      this.neonStreaks.push(streak);
-    }
+    this.neonSkyTexture = createNeonSkyTexture();
+    this.neonSky = new THREE.Mesh(
+      new THREE.SphereGeometry(72, 64, 32),
+      new THREE.MeshBasicMaterial({
+        depthWrite: false,
+        fog: false,
+        map: this.neonSkyTexture,
+        side: THREE.BackSide,
+      }),
+    );
+    this.neonSky.name = 'Neon aurora sky';
+    this.neonSky.position.y = 7;
+    this.neonSky.rotation.y = -0.7;
+    this.neonGroup.add(this.neonSky);
 
-    const magenta = emissiveMaterial(0xf023c1, 11);
-    const blue = emissiveMaterial(0x556eff, 9);
-    [
-      [-6.5, 2.3, -4, 0.18, magenta],
-      [6.2, 1.5, -1, -0.24, blue],
-      [-5.5, 4.2, 2.5, -0.32, blue],
-      [5.8, 3.6, 4, 0.28, magenta],
-    ].forEach(([x, y, z, rotation, material]) => {
-      const rail = surface(new THREE.BoxGeometry(0.055, 0.055, 8.5), material, [x, y, z]);
-      rail.rotation.set(rotation, rotation * 0.4, rotation * 0.22);
-      this.neonGroup.add(rail);
+    const road = surface(
+      new THREE.PlaneGeometry(12.6, 150),
+      new THREE.MeshPhysicalMaterial({
+        clearcoat: 0.12,
+        clearcoatRoughness: 0.48,
+        color: 0x010207,
+        envMapIntensity: 0.16,
+        metalness: 0.02,
+        roughness: 0.84,
+        specularIntensity: 0.08,
+      }),
+      [0, -0.006, 24],
+    );
+    road.rotation.x = -Math.PI / 2;
+    this.neonGroup.add(road);
+
+    const markerMaterial = emissiveMaterial(0xe7f1ff, 3.3);
+    const markerGeometry = new THREE.BoxGeometry(0.045, 0.012, 2.5);
+    [-2.25, 2.25].forEach((x, laneIndex) => {
+      for (let index = 0; index < 18; index += 1) {
+        const marker = surface(markerGeometry, markerMaterial, [x, 0.012, -20 + index * 6.2 + laneIndex * 3.1]);
+        marker.userData.speed = 34;
+        marker.userData.minZ = -9.2;
+        marker.userData.maxZ = 88;
+        this.neonGroup.add(marker);
+        this.neonRoadMarkers.push(marker);
+      }
     });
+
+    const edgeMaterials = [emissiveMaterial(0xff3ac8, 1.8), emissiveMaterial(0x5acdf4, 1.8)];
+    [-6.12, 6.12].forEach((x, index) => {
+      const edge = surface(new THREE.BoxGeometry(0.055, 0.04, 112), edgeMaterials[index], [x, 0.04, 46]);
+      this.neonGroup.add(edge);
+    });
+
+    const colors = [
+      0xff26bf,
+      0xff26bf,
+      0xff26bf,
+      0xd733ff,
+      0xa94cff,
+      0xa94cff,
+      0x7b56ff,
+      0x438cff,
+      0x4bdde2,
+      0xd7ecff,
+      0xffbe58,
+    ];
+    const streakMaterials = colors.map((hex, index) => {
+      const material = emissiveMaterial(hex, 3.2 + (index % 3) * 0.3);
+      material.depthWrite = false;
+      material.opacity = 0.74;
+      material.transparent = true;
+      return material;
+    });
+    const headMaterials = colors.map((hex, index) => {
+      const material = emissiveMaterial(hex, 7.2 + (index % 3) * 0.55);
+      material.depthWrite = false;
+      material.opacity = 0.94;
+      material.transparent = true;
+      return material;
+    });
+    const streakGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+    const addStreakLayer = (count, layer, seedOffset) => {
+      for (let index = 0; index < count; index += 1) {
+        const seed = seedOffset + index * 17;
+        const isGround = layer === 'ground';
+        const randomX = seededRandom(seed + 2) * 2 - 1;
+        const x = randomX * (isGround ? 10.8 : 12.8);
+        const y = isGround
+          ? 0.018 + seededRandom(seed + 3) * 0.055
+          : layer === 'sky'
+            ? 2.7 + Math.pow(seededRandom(seed + 3), 0.8) * 7.2
+            : 0.4 + Math.pow(seededRandom(seed + 3), 0.78) * 3.2;
+        const length = (isGround ? 2.8 : 2.2) + seededRandom(seed + 4) * (isGround ? 9.5 : 10.8);
+        const thickness = (isGround ? 0.007 : 0.006) + seededRandom(seed + 5) * (isGround ? 0.014 : 0.016);
+        const colorIndex = Math.floor(seededRandom(seed + 6) * colors.length);
+        const streak = new THREE.Group();
+        const trail = new THREE.Mesh(streakGeometry, streakMaterials[colorIndex]);
+        const head = new THREE.Mesh(streakGeometry, headMaterials[colorIndex]);
+        streak.position.set(x, y, -22 + seededRandom(seed + 7) * 112);
+        trail.scale.set(thickness, thickness * (isGround ? 0.42 : 0.68), length);
+        const headLength = Math.min(0.46, length * 0.07);
+        head.position.z = -length * 0.5 + headLength * 0.5;
+        head.scale.set(thickness * 1.22, thickness * (isGround ? 0.64 : 0.86), headLength);
+        trail.castShadow = false;
+        trail.receiveShadow = false;
+        head.castShadow = false;
+        head.receiveShadow = false;
+        streak.add(trail, head);
+        streak.userData.speed = (isGround ? 38 : layer === 'sky' ? 19 : 27)
+          + seededRandom(seed + 8) * (isGround ? 22 : 16);
+        streak.userData.minZ = -9.2;
+        streak.userData.maxZ = 92;
+        streak.userData.phase = seededRandom(seed + 9) * Math.PI * 2;
+        streak.userData.trail = trail;
+        streak.userData.baseScaleY = trail.scale.y;
+        this.neonGroup.add(streak);
+        this.neonStreaks.push(streak);
+      }
+    };
+
+    addStreakLayer(54, 'ground', 300);
+    addStreakLayer(42, 'mid', 1400);
+    addStreakLayer(28, 'sky', 2700);
+
+    const mountainShape = new THREE.Shape();
+    mountainShape.moveTo(-38, -0.4);
+    for (let index = 0; index <= 24; index += 1) {
+      const x = -38 + index * (76 / 24);
+      const ridge = 0.7 + seededRandom(4100 + index) * 2.4 + Math.sin(index * 1.63) * 0.55;
+      mountainShape.lineTo(x, ridge);
+    }
+    mountainShape.lineTo(38, -0.4);
+    mountainShape.closePath();
+    const mountains = new THREE.Mesh(
+      new THREE.ShapeGeometry(mountainShape),
+      new THREE.MeshStandardMaterial({ color: 0x060a12, metalness: 0.04, roughness: 0.94, side: THREE.DoubleSide }),
+    );
+    mountains.position.set(0, 0, 58);
+    mountains.name = 'Light trail mountain horizon';
+    this.neonGroup.add(mountains);
   }
 
   buildStageDetails() {
@@ -665,9 +843,10 @@ export class EnvironmentRig {
 
     if (this.mode === 'neon') {
       this.stageKey.color.setHex(0xd8e6ff);
-      this.neonAreaLights[0].intensity = 13;
-      this.neonAreaLights[1].intensity = 11;
-      this.neonAreaLights[2].intensity = 8;
+      this.neonAreaLights[0].intensity = 6.8;
+      this.neonAreaLights[1].intensity = 5.6;
+      this.neonAreaLights[2].intensity = 4.4;
+      this.neonAreaLights[3].intensity = 3.2;
     } else {
       this.stageKey.color.setHex(0xf0f4ff);
       this.stageAreaLights[0].intensity = 12;
@@ -735,8 +914,25 @@ export class EnvironmentRig {
   update(delta, elapsed) {
     if (this.mode === 'neon') {
       this.neonStreaks.forEach((streak) => {
-        streak.position.z += streak.userData.speed * delta;
-        if (streak.position.z > 22) streak.position.z = -22;
+        streak.position.z -= streak.userData.speed * delta;
+        if (streak.position.z < streak.userData.minZ) {
+          streak.position.z += streak.userData.maxZ - streak.userData.minZ;
+        }
+        const pulse = 0.82 + Math.sin(elapsed * 3.4 + streak.userData.phase) * 0.18;
+        streak.userData.trail.scale.y = streak.userData.baseScaleY * pulse;
+      });
+      this.neonRoadMarkers.forEach((marker) => {
+        marker.position.z -= marker.userData.speed * delta;
+        if (marker.position.z < marker.userData.minZ) {
+          marker.position.z += marker.userData.maxZ - marker.userData.minZ;
+        }
+      });
+      this.neonAreaLights.forEach((light, index) => {
+        const span = 26;
+        light.position.z = THREE.MathUtils.euclideanModulo(18 - elapsed * (9 + index * 2.3) + index * 8, span) - 13;
+        const baseIntensity = [6.8, 5.6, 4.4, 3.2][index];
+        light.intensity = baseIntensity * (0.86 + Math.sin(elapsed * 2.1 + index) * 0.14);
+        light.lookAt(0, 0.72, 0);
       });
     }
 
@@ -750,6 +946,7 @@ export class EnvironmentRig {
   }
 
   dispose() {
+    this.neonSkyTexture?.dispose();
     [this.rainStreaks, this.rainSplashes, ...(this.snowLayers ?? [])].forEach((object) => {
       object?.geometry.dispose();
       object?.material.dispose();

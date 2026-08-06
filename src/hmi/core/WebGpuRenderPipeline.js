@@ -5,7 +5,7 @@ import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 const BLOOM_PROFILES = {
   day: { radius: 0.28, strength: 0.12, threshold: 1.45 },
-  neon: { radius: 0.62, strength: 0.78, threshold: 0.72 },
+  neon: { radius: 0.48, strength: 0.52, threshold: 0.92 },
   stage: { radius: 0.42, strength: 0.38, threshold: 0.92 },
 };
 
